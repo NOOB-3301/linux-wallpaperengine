@@ -1163,6 +1163,14 @@ void CImage::updateScreenSpacePosition () {
 	const float referenceSize = static_cast<float> (this->getScene ().getWidth ());
 	float x = (depth.x + parallaxAmount) * displacement->x * referenceSize;
 	float y = (depth.y + parallaxAmount) * displacement->y * referenceSize;
+	// whatever the scene authors, a layer never moves further than this fraction of the scene width, so the
+	// edge of the scene (black bars) can't come into view when the cursor is at a screen edge
+	static const float maxShift = [] () {
+	    const char* custom = getenv ("WPENGINE_PARALLAX_MAX");
+	    return custom != nullptr ? static_cast<float> (atof (custom)) : 0.012f;
+	}();
+	x = glm::clamp (x, -maxShift * referenceSize, maxShift * referenceSize);
+	y = glm::clamp (y, -maxShift * referenceSize, maxShift * referenceSize);
 	mvp = glm::translate (mvp, { x, y, 0.0f });
     }
 
