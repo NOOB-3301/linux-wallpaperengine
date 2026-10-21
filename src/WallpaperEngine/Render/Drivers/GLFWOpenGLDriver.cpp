@@ -35,6 +35,10 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     glfwWindowHint (GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     glfwWindowHint (GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint (GLFW_VISIBLE, GLFW_FALSE);
+    // WPENGINE_RETINA=0 renders at 1 pixel per point: a quarter of the GPU work on a Retina display
+    if (const char* retina = getenv ("WPENGINE_RETINA"); retina != nullptr && retina[0] == '0') {
+	glfwWindowHint (GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
+    }
     // set X11-specific hints
 
     // for forced window mode, we can set some hints that'll help position the window

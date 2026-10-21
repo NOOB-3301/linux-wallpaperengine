@@ -310,7 +310,9 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	    this->getScene ().camera.parallax.delay->value->getFloat () * (g_Time - g_TimeLast), 0.0f, 1.0f
 	);
 
-	const glm::vec2 centeredMouse = this->m_mousePosition - glm::vec2 (0.5f, 0.5f);
+	// the global cursor can be far outside this window (menu bar, dock, another display); an unbounded offset
+	// shifts layers past the scene edge and shows black bars
+	const glm::vec2 centeredMouse = glm::clamp (this->m_mousePosition - glm::vec2 (0.5f, 0.5f), -0.5f, 0.5f);
 	this->m_parallaxDisplacement
 	    = glm::mix (this->m_parallaxDisplacement, (centeredMouse * amount) * influence, delay);
     }
