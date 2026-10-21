@@ -41,6 +41,8 @@ public:
     const glm::vec2* getMousePositionLast () const;
     const glm::vec2* getMousePositionNormalized () const;
     const glm::vec2* getParallaxDisplacement () const;
+    /** The furthest (scene units) a layer may be shifted by parallax before the scene edge would show */
+    [[nodiscard]] glm::vec2 getParallaxLimit () const;
 
     [[nodiscard]] const std::vector<CObject*>& getObjectsByRenderOrder () const;
     [[nodiscard]] const CObject* getObject (int id) const;

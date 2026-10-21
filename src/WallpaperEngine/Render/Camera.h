@@ -33,11 +33,14 @@ public:
     [[nodiscard]] float getFov () const;
     [[nodiscard]] float getNearZ () const;
     [[nodiscard]] float getFarZ () const;
+    /** Zoom applied to the whole scene while camera parallax is on, so shifted layers never show the scene edge */
+    [[nodiscard]] float getParallaxZoom () const;
 
 private:
     float m_width;
     float m_height;
     bool m_isOrthogonal = false;
+    float m_parallaxZoom = 1.0f;
     glm::mat4 m_projection = {};
     glm::mat4 m_lookat = {};
     const SceneData::Camera& m_camera;

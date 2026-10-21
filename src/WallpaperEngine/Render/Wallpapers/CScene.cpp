@@ -306,9 +306,11 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	&& !this->getContext ().getApp ().getContext ().settings.mouse.disableparallax) {
 	const float influence = this->getScene ().camera.parallax.mouseInfluence->value->getFloat ();
 	const float amount = this->getScene ().camera.parallax.amount->value->getFloat ();
-	const float delay = glm::clamp (
-	    this->getScene ().camera.parallax.delay->value->getFloat () * (g_Time - g_TimeLast), 0.0f, 1.0f
-	);
+	// the scene's delay is the smoothing time in seconds (0 follows the cursor immediately); upstream's
+	// delay * frameTime made the camera crawl (and never move at all for a delay of 0)
+	const float smoothing = std::max (0.0f, this->getScene ().camera.parallax.delay->value->getFloat ());
+	const float frameTime = std::max (0.0f, g_Time - g_TimeLast);
+	const float delay = smoothing > 0.0f ? 1.0f - std::exp (-frameTime / smoothing) : 1.0f;
 
 	// the global cursor can be far outside this window (menu bar, dock, another display); an unbounded offset
 	// shifts layers past the scene edge and shows black bars
@@ -424,6 +426,12 @@ const glm::vec2* CScene::getMousePositionLast () const { return &this->m_mousePo
 const glm::vec2* CScene::getMousePositionNormalized () const { return &this->m_mousePositionNormalized; }
 
 const glm::vec2* CScene::getParallaxDisplacement () const { return &this->m_parallaxDisplacement; }
+
+glm::vec2 CScene::getParallaxLimit () const {
+    const float margin = (1.0f - 1.0f / this->m_camera->getParallaxZoom ()) / 2.0f;
+
+    return { this->getWidth () * margin, this->getHeight () * margin };
+}
 
 const std::vector<CObject*>& CScene::getObjectsByRenderOrder () const { return this->m_objectsByRenderOrder; }
 

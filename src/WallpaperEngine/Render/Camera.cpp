@@ -3,6 +3,10 @@
 
 #include "Camera.h"
 
+#include "WallpaperEngine/Application/ApplicationContext.h"
+#include "WallpaperEngine/Application/WallpaperApplication.h"
+#include "WallpaperEngine/Render/Wallpapers/CScene.h"
+
 using namespace WallpaperEngine;
 using namespace WallpaperEngine::Render;
 
@@ -37,6 +41,8 @@ float Camera::getFov () const { return this->m_camera.projection.fov->value->get
 
 float Camera::getNearZ () const { return this->m_camera.projection.nearz->value->getFloat (); }
 
+float Camera::getParallaxZoom () const { return this->m_parallaxZoom; }
+
 float Camera::getFarZ () const { return this->m_camera.projection.farz->value->getFloat (); }
 
 void Camera::setOrthogonalProjection (const float width, const float height) {
@@ -46,7 +52,19 @@ void Camera::setOrthogonalProjection (const float width, const float height) {
     float nearz = this->m_camera.projection.nearz->value->getFloat ();
     float farz = this->m_camera.projection.farz->value->getFloat ();
 
-    this->m_projection = glm::ortho<float> (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0, nearz, farz);
+    // macOS port: parallax moves layers by up to (1 - 1/zoom)/2 of the scene size, and the zoom hides exactly that
+    // margin. WPENGINE_PARALLAX_ZOOM changes it (1 = no margin, parallax shift is then 0).
+    this->m_parallaxZoom = 1.0f;
+    if (this->m_camera.parallax.enabled->value->getBool ()
+	&& !this->m_scene.getContext ().getApp ().getContext ().settings.mouse.disableparallax) {
+	const char* custom = getenv ("WPENGINE_PARALLAX_ZOOM");
+	this->m_parallaxZoom = std::max (1.0f, custom != nullptr ? static_cast<float> (atof (custom)) : 1.06f);
+    }
+    const float zoom = this->m_parallaxZoom;
+
+    this->m_projection = glm::ortho<float> (
+	-width / 2.0 / zoom, width / 2.0 / zoom, -height / 2.0 / zoom, height / 2.0 / zoom, nearz, farz
+    );
     this->m_projection = glm::translate (this->m_projection, this->getEye ());
     this->m_isOrthogonal = true;
 }
