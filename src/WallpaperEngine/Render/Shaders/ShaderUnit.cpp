@@ -1,7 +1,9 @@
 #include "ShaderUnit.h"
 
 #include "WallpaperEngine/Logging/Log.h"
+#include <algorithm>
 #include <exception>
+#include <vector>
 #include <regex>
 #include <stack>
 #include <string>

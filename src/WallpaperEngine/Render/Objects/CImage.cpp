@@ -3,6 +3,8 @@
 #include "CRenderable.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <optional>

@@ -11,6 +11,8 @@
 #include "WallpaperEngine/Data/Model/Wallpaper.h"
 #include "WallpaperEngine/Data/Parsers/ObjectParser.h"
 
+#include <algorithm>
+#include <cmath>
 #include <ranges>
 
 extern float g_Time;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <typeinfo>
 
 namespace WallpaperEngine::Data::Utils {
 /**

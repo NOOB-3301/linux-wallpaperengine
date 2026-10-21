@@ -7,6 +7,7 @@
 
 #include <GL/glew.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>

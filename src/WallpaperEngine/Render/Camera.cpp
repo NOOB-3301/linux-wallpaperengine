@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
