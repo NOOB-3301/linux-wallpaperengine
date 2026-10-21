@@ -282,11 +282,19 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
     nameA << "_rt_imageLayerComposite_" << this->getImage ().id << "_a";
     nameB << "_rt_imageLayerComposite_" << this->getImage ().id << "_b";
 
+    // WPENGINE_LAYER_SCALE (0.25 - 1): render the effect buffers of every layer at a fraction of the layer's texture
+    // size. Big layers (4000+ px) with several effect passes are what makes a scene GPU heavy, not the screen size.
+    static const float layerScale = [] () {
+	const char* custom = getenv ("WPENGINE_LAYER_SCALE");
+	return custom != nullptr ? glm::clamp (static_cast<float> (atof (custom)), 0.25f, 1.0f) : 1.0f;
+    }();
+    const glm::vec2 bufferSize = { std::max (1.0f, std::round (size.x * layerScale)),
+				   std::max (1.0f, std::round (size.y * layerScale)) };
     this->m_currentMainFBO = this->m_mainFBO = scene.create (
-	nameA.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameA.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, bufferSize, bufferSize
     );
     this->m_currentSubFBO = this->m_subFBO = scene.create (
-	nameB.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameB.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, bufferSize, bufferSize
     );
 
     // build a list of vertices, these might need some change later (or maybe invert the camera)

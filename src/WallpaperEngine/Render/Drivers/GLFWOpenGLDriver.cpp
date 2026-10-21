@@ -120,7 +120,8 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     static float startTime, endTime, minimumTime = 1.0f / this->m_context.settings.render.maximumFPS;
     // macOS: a wallpaper hidden behind windows (or on a sleeping display) costs nothing; the scenes are GPU heavy
     if (this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW
-	&& !this->m_context.settings.screenshot.take && !wpWindowVisible (this->m_window)) {
+	&& !this->m_context.settings.screenshot.take && getenv ("WPENGINE_NO_OCCLUSION") == nullptr
+	&& !wpWindowVisible (this->m_window)) {
 	glfwWaitEventsTimeout (0.25);
 	return;
     }
@@ -172,6 +173,10 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     glfwPollEvents ();
     // increase frame counter
     this->m_frameCounter++;
+    // benchmarking (WPENGINE_FPS_LOG): wait for the GPU so the frame time is the real cost
+    if (getenv ("WPENGINE_FPS_LOG") != nullptr) {
+	glFinish ();
+    }
     // get the end time of the frame
     endTime = this->getRenderTime ();
 
