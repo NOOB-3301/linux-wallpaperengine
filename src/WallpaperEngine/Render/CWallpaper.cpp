@@ -6,6 +6,12 @@
 #include "WallpaperEngine/Data/Model/Project.h"
 #include "WallpaperEngine/Data/Model/Wallpaper.h"
 
+#include <algorithm>
+#include <cstdlib>
+
+extern float g_Time;
+extern float g_TimeLast;
+
 using namespace WallpaperEngine::Render;
 
 CWallpaper::CWallpaper (
@@ -200,7 +206,16 @@ void CWallpaper::render (
 ) {
     // Get current frame counter from the driver to avoid redundant scene renders
     const uint32_t currentFrame = this->getContext ().getDriver ().getFrameCounter ();
-    const bool needsSceneRender = (currentFrame != this->m_lastRenderedFrame);
+    // WPENGINE_PRESENT_FPS above the scene's own frame rate: present (and move the parallax) that often, but only
+    // draw the expensive scene when its own frame is due
+    static const int presentFPS = [] () {
+	const char* custom = getenv ("WPENGINE_PRESENT_FPS");
+	return custom != nullptr ? atoi (custom) : 0;
+    }();
+    const int sceneFPS = std::max (1, this->getContext ().getApp ().getContext ().settings.render.maximumFPS);
+    const bool sceneDue = presentFPS <= sceneFPS || this->m_lastSceneTime < 0.0f
+	|| (g_Time - this->m_lastSceneTime) >= (1.0f / static_cast<float> (sceneFPS)) * 0.92f;
+    const bool needsSceneRender = (currentFrame != this->m_lastRenderedFrame) && sceneDue;
     const glm::ivec4 sceneViewport = this->m_spanInfo.has_value ()
 	? glm::ivec4 { 0, 0, this->m_spanInfo->totalBounds.z, this->m_spanInfo->totalBounds.w }
 	: viewport;
@@ -208,9 +223,15 @@ void CWallpaper::render (
 #if !NDEBUG
     glPushDebugGroup (GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Rendering scene");
 #endif /* !NDEBUG */
+    this->updatePresent (sceneViewport);
     if (needsSceneRender) {
+	// scene animations and particles advance by the time since the scene was last drawn, not since the last present
+	if (this->m_lastSceneTime >= 0.0f) {
+	    g_TimeLast = this->m_lastSceneTime;
+	}
 	this->renderFrame (sceneViewport);
 	this->m_lastRenderedFrame = currentFrame;
+	this->m_lastSceneTime = g_Time;
     }
 #if !NDEBUG
     glPopDebugGroup ();
@@ -268,6 +289,19 @@ void CWallpaper::render (
 	vend = uvs.vend;
     }
 
+    if (!this->m_spanInfo.has_value ()) {
+	// zoom about the centre of what is shown, then shift (parallax). Outside the scene is black.
+	const float zoom = std::max (0.1f, this->getViewZoom ());
+	// the shift is in whole-texture units; the visible crop is only part of the texture, so scale it by that part
+	const glm::vec2 shift = this->getViewShift () * glm::vec2 (uend - ustart, vend - vstart);
+	const float centreU = (ustart + uend) / 2.0f, centreV = (vstart + vend) / 2.0f;
+	const float halfU = (uend - ustart) / 2.0f / zoom, halfV = (vend - vstart) / 2.0f / zoom;
+	ustart = centreU - halfU - shift.x;
+	uend = centreU + halfU - shift.x;
+	vstart = centreV - halfV - shift.y;
+	vend = centreV + halfV - shift.y;
+    }
+
     const GLfloat texCoords[] = {
 	ustart, vstart, uend, vstart, ustart, vend, ustart, vend, uend, vstart, uend, vend,
     };
@@ -286,6 +320,13 @@ void CWallpaper::render (
     // activate scene texture
     glActiveTexture (GL_TEXTURE0);
     glBindTexture (GL_TEXTURE_2D, this->getWallpaperTexture ());
+    {
+	// zoomed out or shifted past the scene edge: black, not a smeared edge pixel
+	constexpr GLfloat border[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameterfv (GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
+    }
     // set uniforms and attribs
     glEnableVertexAttribArray (this->a_TexCoord);
     glBindBuffer (GL_ARRAY_BUFFER, this->m_texCoordBuffer);

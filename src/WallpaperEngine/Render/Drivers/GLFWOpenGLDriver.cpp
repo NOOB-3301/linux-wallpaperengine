@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cstdlib>
 #include "GLFWOpenGLDriver.h"
 #include "VideoFactories.h"
 #include "WallpaperEngine/Logging/Log.h"
@@ -117,7 +119,14 @@ glm::ivec2 GLFWOpenGLDriver::getFramebufferSize () const {
 uint32_t GLFWOpenGLDriver::getFrameCounter () const { return this->m_frameCounter; }
 
 void GLFWOpenGLDriver::dispatchEventQueue () {
-    static float startTime, endTime, minimumTime = 1.0f / this->m_context.settings.render.maximumFPS;
+    // WPENGINE_PRESENT_FPS: present (and move the parallax) faster than the scene is redrawn; see CWallpaper::render
+    static const int presentFPS = [] () {
+	const char* custom = getenv ("WPENGINE_PRESENT_FPS");
+	return custom != nullptr ? std::max (1, atoi (custom)) : 0;
+    }();
+    static float startTime, endTime;
+    static const float minimumTime = 1.0f
+	/ static_cast<float> (std::max (presentFPS, this->m_context.settings.render.maximumFPS));
     // macOS: a wallpaper hidden behind windows (or on a sleeping display) costs nothing; the scenes are GPU heavy
     if (this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW
 	&& !this->m_context.settings.screenshot.take && getenv ("WPENGINE_NO_OCCLUSION") == nullptr

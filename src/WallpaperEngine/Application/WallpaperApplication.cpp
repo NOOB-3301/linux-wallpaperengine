@@ -609,7 +609,15 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 	}
 
 	// Get the UV coordinates which define the visible portion based on scaling mode
-	const auto [ustart, uend, vstart, vend] = wallpaper->getState ().getTextureUVs ();
+	const auto [baseUstart, baseUend, baseVstart, baseVend] = wallpaper->getState ().getTextureUVs ();
+
+	// the same zoom and shift CWallpaper::render applies when it copies the scene to the window
+	const float zoom = std::max (0.1f, wallpaper->getViewZoom ());
+	const glm::vec2 shift = wallpaper->getViewShift () * glm::vec2 (baseUend - baseUstart, baseVend - baseVstart);
+	const float centreU = (baseUstart + baseUend) / 2.0f, centreV = (baseVstart + baseVend) / 2.0f;
+	const float halfU = (baseUend - baseUstart) / 2.0f / zoom, halfV = (baseVend - baseVstart) / 2.0f / zoom;
+	const float ustart = centreU - halfU - shift.x, uend = centreU + halfU - shift.x;
+	const float vstart = centreV - halfV - shift.y, vend = centreV + halfV - shift.y;
 
 	captures.push_back (
 	    { buffer, readWidth, readHeight, vpWidth, vpHeight, currentXOffset, ustart, uend, vstart, vend }
@@ -637,6 +645,9 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 		    const float v = capture.vstart
 			+ (static_cast<float> (y) / capture.vpHeight) * (capture.vend - capture.vstart);
 
+		    if (u < 0.0f || u >= 1.0f || v < 0.0f || v >= 1.0f) {
+			continue;   // outside the scene: black
+		    }
 		    // convert UV to pixel coordinates in the source buffer
 		    const int srcX = std::clamp (static_cast<int> (u * capture.readWidth), 0, capture.readWidth - 1);
 		    const int srcY = std::clamp (static_cast<int> (v * capture.readHeight), 0, capture.readHeight - 1);

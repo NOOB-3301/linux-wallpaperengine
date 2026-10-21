@@ -1873,9 +1873,11 @@ void CParticle::applyParallaxToModelMatrix () {
     const glm::vec2* displacement = getScene ().getParallaxDisplacement ();
     const float referenceSize = static_cast<float> (getScene ().getWidth ());
     const glm::vec2 limit = getScene ().getParallaxLimit ();
+    // when the whole scene is shifted as one image, a particle only adds what it moves more than the scene
+    const glm::vec2 sceneShift = getScene ().getGlobalParallaxShift ();
     const glm::vec3 parallaxOffset {
-	glm::clamp ((depth.x + parallaxAmount) * displacement->x * referenceSize, -limit.x, limit.x),
-	glm::clamp ((depth.y + parallaxAmount) * displacement->y * referenceSize, -limit.y, limit.y),
+	glm::clamp ((depth.x + parallaxAmount) * displacement->x * referenceSize, -limit.x, limit.x) - sceneShift.x,
+	glm::clamp ((depth.y + parallaxAmount) * displacement->y * referenceSize, -limit.y, limit.y) - sceneShift.y,
 	0.0f,
     };
     m_modelMatrix = glm::translate (m_modelMatrix, parallaxOffset);

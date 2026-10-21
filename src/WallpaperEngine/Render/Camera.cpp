@@ -63,11 +63,8 @@ void Camera::setOrthogonalProjection (const float width, const float height) {
 	const char* custom = getenv ("WPENGINE_PARALLAX_ZOOM");
 	this->m_parallaxZoom = std::max (1.0f, custom != nullptr ? static_cast<float> (atof (custom)) : 1.06f);
     }
-    const float zoom = this->m_parallaxZoom;
-
-    this->m_projection = glm::ortho<float> (
-	-width / 2.0 / zoom, width / 2.0 / zoom, -height / 2.0 / zoom, height / 2.0 / zoom, nearz, farz
-    );
+    // the scene itself is drawn at zoom 1; CWallpaper::render crops the margin when it copies the scene out
+    this->m_projection = glm::ortho<float> (-width / 2.0, width / 2.0, -height / 2.0, height / 2.0, nearz, farz);
     this->m_projection = glm::translate (this->m_projection, this->getEye ());
     this->m_isOrthogonal = true;
 }

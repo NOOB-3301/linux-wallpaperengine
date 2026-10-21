@@ -43,6 +43,16 @@ public:
     const glm::vec2* getParallaxDisplacement () const;
     /** The furthest (scene units) a layer may be shifted by parallax before the scene edge would show */
     [[nodiscard]] glm::vec2 getParallaxLimit () const;
+    /** True when every image layer shifts by the same amount, so parallax can be applied once, when the scene is
+     *  copied to the output, and keeps moving at the presentation rate */
+    [[nodiscard]] bool isParallaxGlobal () const;
+
+    /** The shift (scene units) that is applied to the whole scene when isParallaxGlobal () */
+    [[nodiscard]] glm::vec2 getGlobalParallaxShift () const;
+
+    void updatePresent (const glm::ivec4& viewport) override;
+    [[nodiscard]] float getViewZoom () const override;
+    [[nodiscard]] glm::vec2 getViewShift () const override;
 
     [[nodiscard]] const std::vector<CObject*>& getObjectsByRenderOrder () const;
     [[nodiscard]] const CObject* getObject (int id) const;
@@ -69,6 +79,10 @@ private:
     glm::vec2 m_mousePositionLast = {};
     glm::vec2 m_mousePositionNormalized = {};
     glm::vec2 m_parallaxDisplacement = {};
+    float m_lastPresentTime = -1.0f;
+    mutable bool m_parallaxChecked = false;
+    mutable bool m_parallaxGlobal = false;
+    mutable glm::vec2 m_globalDepth = {};
     std::shared_ptr<const CFBO> _rt_4FrameBuffer = nullptr;
     std::shared_ptr<const CFBO> _rt_8FrameBuffer = nullptr;
     std::shared_ptr<const CFBO> _rt_Bloom = nullptr;

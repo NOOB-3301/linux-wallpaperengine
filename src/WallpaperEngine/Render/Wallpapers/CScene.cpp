@@ -299,9 +299,13 @@ void CScene::addObjectToRenderOrder (const Object& object) {
 ScriptEngine& CScene::getScriptEngine () const { return *this->m_scriptEngine; }
 Camera& CScene::getCamera () const { return *this->m_camera; }
 
-void CScene::renderFrame (const glm::ivec4& viewport) {
+void CScene::updatePresent (const glm::ivec4& viewport) {
     // ensure the virtual mouse position is up to date
     this->updateMouse (viewport);
+
+    const float now = g_Time;
+    const float frameTime = this->m_lastPresentTime < 0.0f ? 0.0f : std::max (0.0f, now - this->m_lastPresentTime);
+    this->m_lastPresentTime = now;
 
     // update the parallax position if required
     if (this->getScene ().camera.parallax.enabled->value->getBool ()
@@ -311,7 +315,6 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	// the scene's delay is the smoothing time in seconds (0 follows the cursor immediately); upstream's
 	// delay * frameTime made the camera crawl (and never move at all for a delay of 0)
 	const float smoothing = std::max (0.0f, this->getScene ().camera.parallax.delay->value->getFloat ());
-	const float frameTime = std::max (0.0f, g_Time - g_TimeLast);
 	const float delay = smoothing > 0.0f ? 1.0f - std::exp (-frameTime / smoothing) : 1.0f;
 
 	// the global cursor can be far outside this window (menu bar, dock, another display); an unbounded offset
@@ -320,7 +323,62 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	this->m_parallaxDisplacement
 	    = glm::mix (this->m_parallaxDisplacement, (centeredMouse * amount) * influence, delay);
     }
+}
 
+bool CScene::isParallaxGlobal () const {
+    if (this->m_parallaxChecked) {
+	return this->m_parallaxGlobal;
+    }
+    this->m_parallaxChecked = true;
+    this->m_parallaxGlobal = false;
+
+    bool first = true;
+    for (const auto& cur : this->m_objectsByRenderOrder) {
+	if (!cur->is<Objects::CImage> ()) {
+	    continue;
+	}
+	const glm::vec2 depth = cur->as<Objects::CImage> ()->getImage ().parallaxDepth->value->getVec2 ();
+	if (first) {
+	    this->m_globalDepth = depth;
+	    first = false;
+	} else if (glm::any (glm::greaterThan (glm::abs (depth - this->m_globalDepth), glm::vec2 (1e-4f)))) {
+	    return false;
+	}
+    }
+    this->m_parallaxGlobal = !first;
+    return this->m_parallaxGlobal;
+}
+
+float CScene::getViewZoom () const {
+    static const float viewZoom = [] () {
+	const char* custom = getenv ("WPENGINE_VIEW_ZOOM");
+	return custom != nullptr ? std::clamp (static_cast<float> (atof (custom)), 0.5f, 3.0f) : 1.0f;
+    }();
+    return this->m_camera->getParallaxZoom () * viewZoom;
+}
+
+glm::vec2 CScene::getGlobalParallaxShift () const {
+    if (!this->isParallaxGlobal ()
+	|| !this->getScene ().camera.parallax.enabled->value->getBool ()
+	|| this->getContext ().getApp ().getContext ().settings.mouse.disableparallax) {
+	return { 0.0f, 0.0f };
+    }
+    const float amount = this->getScene ().camera.parallax.amount->value->getFloat ();
+    const float reference = static_cast<float> (this->getWidth ());
+    const glm::vec2 limit = this->getParallaxLimit ();
+    return {
+	glm::clamp ((this->m_globalDepth.x + amount) * this->m_parallaxDisplacement.x * reference, -limit.x, limit.x),
+	glm::clamp ((this->m_globalDepth.y + amount) * this->m_parallaxDisplacement.y * reference, -limit.y, limit.y),
+    };
+}
+
+glm::vec2 CScene::getViewShift () const {
+    const glm::vec2 shift = this->getGlobalParallaxShift ();
+    // scene units -> fraction of the scene (the whole scene is one texture)
+    return { shift.x / static_cast<float> (this->getWidth ()), shift.y / static_cast<float> (this->getHeight ()) };
+}
+
+void CScene::renderFrame (const glm::ivec4& viewport) {
     // keyframed property animations (alpha, color, origin, ...) follow the scene clock
     for (auto* animated : Data::Model::DynamicValue::animatedValues ()) {
 	animated->animate (g_Time);

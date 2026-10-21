@@ -59,6 +59,13 @@ public:
      */
     virtual void setPause (bool newState);
 
+    /** Work that has to run on every presented frame, also when the scene itself is not redrawn (cursor, parallax) */
+    virtual void updatePresent (const glm::ivec4& viewport) { }
+    /** Zoom applied when the scene is copied to the output (1 = none, > 1 crops the edges) */
+    [[nodiscard]] virtual float getViewZoom () const { return 1.0f; }
+    /** Shift applied when the scene is copied to the output, as a fraction of the scene width and height */
+    [[nodiscard]] virtual glm::vec2 getViewShift () const { return { 0.0f, 0.0f }; }
+
     /**
      * @return The container to resolve files for this wallpaper
      */
@@ -191,5 +198,7 @@ private:
     std::optional<SpanInfo> m_spanInfo = std::nullopt;
     /** Frame counter to avoid redundant renderFrame calls when shared across viewports */
     uint32_t m_lastRenderedFrame = UINT32_MAX;
+    /** When the scene was last drawn; the scene is drawn at its own (lower) rate while presenting more often */
+    float m_lastSceneTime = -1.0f;
 };
 } // namespace WallpaperEngine::Render
