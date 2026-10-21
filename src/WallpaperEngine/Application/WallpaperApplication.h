@@ -118,6 +118,9 @@ private:
      * Prepares CEF browser to be used
      */
     void setupBrowser ();
+    /** Dev tool (WPENGINE_CHECK_SHADERS=<file with one shader name per line>): compiles each shader through the whole
+     *  pipeline and the GL driver, reports the failures and exits */
+    void checkShaders (const char* listFile);
     /**
      * Prepares desktop environment-related things (like render, window, fullscreen detector, etc)
      */

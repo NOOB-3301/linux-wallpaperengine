@@ -6,12 +6,13 @@
 #include "WallpaperEngine/Render/Drivers/Output/X11Output.h"
 #endif
 
-#define GLFW_EXPOSE_NATIVE_X11
 #include "WallpaperEngine/Debugging/CallStack.h"
 
-#include <GLFW/glfw3native.h>
 
 #include <unistd.h>
+
+extern "C" void wpMakeDesktopWindow (GLFWwindow* window);
+extern "C" bool wpWindowVisible (GLFWwindow* window);
 
 using namespace WallpaperEngine::Render::Drivers;
 
@@ -27,20 +28,19 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     }
 
     // set some window hints (opengl version to be used)
-    glfwWindowHint (GLFW_SAMPLES, 4);
-    glfwWindowHint (GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint (GLFW_CONTEXT_VERSION_MINOR, 3);
+    // macOS: no MSAA (the scene is composited from textures); the Retina framebuffer stays on for sharpness
+    glfwWindowHint (GLFW_SAMPLES, 0);
+    glfwWindowHint (GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint (GLFW_CONTEXT_VERSION_MINOR, 1);
+    glfwWindowHint (GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     glfwWindowHint (GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint (GLFW_VISIBLE, GLFW_FALSE);
     // set X11-specific hints
-    glfwWindowHintString (GLFW_X11_CLASS_NAME, "linux-wallpaperengine");
-    glfwWindowHintString (GLFW_X11_INSTANCE_NAME, "linux-wallpaperengine");
 
     // for forced window mode, we can set some hints that'll help position the window
     if (context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW) {
 	glfwWindowHint (GLFW_RESIZABLE, GLFW_FALSE);
 	glfwWindowHint (GLFW_DECORATED, GLFW_FALSE);
-	glfwWindowHint (GLFW_FLOATING, GLFW_TRUE);
     }
 
 #if !NDEBUG
@@ -93,7 +93,12 @@ void GLFWOpenGLDriver::resizeWindow (glm::ivec4 sizeandpos) {
     glfwSetWindowSize (this->m_window, sizeandpos.z, sizeandpos.w);
 }
 
-void GLFWOpenGLDriver::showWindow () { glfwShowWindow (this->m_window); }
+void GLFWOpenGLDriver::showWindow () {
+    glfwShowWindow (this->m_window);
+    if (this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW) {
+	wpMakeDesktopWindow (this->m_window);
+    }
+}
 
 void GLFWOpenGLDriver::hideWindow () { glfwHideWindow (this->m_window); }
 
@@ -109,6 +114,12 @@ uint32_t GLFWOpenGLDriver::getFrameCounter () const { return this->m_frameCounte
 
 void GLFWOpenGLDriver::dispatchEventQueue () {
     static float startTime, endTime, minimumTime = 1.0f / this->m_context.settings.render.maximumFPS;
+    // macOS: a wallpaper hidden behind windows (or on a sleeping display) costs nothing; the scenes are GPU heavy
+    if (this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW
+	&& !this->m_context.settings.screenshot.take && !wpWindowVisible (this->m_window)) {
+	glfwWaitEventsTimeout (0.25);
+	return;
+    }
     // get the start time of the frame
     startTime = this->getRenderTime ();
     // clear the screen
@@ -145,6 +156,12 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     // TODO: AS THOSE, MORE THAN LIKELY, WILL REQUIRE OF A DIFFERENT PROCESSING RATE
     // update the output with the given image
     this->m_output->updateRender ();
+    // the scene writes real alpha values (blend modes, effects); an opaque wallpaper needs alpha 1 or the window
+    // composites washed out against whatever is behind it
+    glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
+    glClear (GL_COLOR_BUFFER_BIT);
+    glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     // do buffer swapping first
     glfwSwapBuffers (this->m_window);
     // poll for events
@@ -154,6 +171,12 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     // get the end time of the frame
     endTime = this->getRenderTime ();
 
+    if (getenv ("WPENGINE_FPS_LOG") != nullptr && this->m_frameCounter % 120 == 0) {
+	static float last = 0.0f;
+	const float now = this->getRenderTime ();
+	fprintf (stderr, "WPFPS %.1f fps, work %.1f ms\n", 120.0f / (now - last), (endTime - startTime) * 1000.0f);
+	last = now;
+    }
     // ensure the frame time is correct to not overrun FPS
     if ((endTime - startTime) < minimumTime) {
 	usleep ((minimumTime - (endTime - startTime)) * CLOCKS_PER_SEC);

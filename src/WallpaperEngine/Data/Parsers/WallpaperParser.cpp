@@ -30,6 +30,14 @@ SceneUniquePtr WallpaperParser::parseScene (const JSON& file, Project& project) 
     const auto objects = scene.require ("objects", "Scenes must have an objects section");
     const auto& properties = project.properties;
 
+    // macOS port: many scenes enable camera parallax but author an amount of 0, which means the mouse does nothing.
+    // WPENGINE_PARALLAX_FALLBACK gives those scenes a usable amount; a scene with its own non-zero amount keeps it.
+    auto parallaxAmount = general.user ("cameraparallaxamount", properties, 1.0f);
+    if (const char* fallback = getenv ("WPENGINE_PARALLAX_FALLBACK");
+	fallback != nullptr && parallaxAmount->value->getFloat () == 0.0f) {
+	parallaxAmount = Builders::UserSettingBuilder::fromValue<float> (static_cast<float> (atof (fallback)));
+    }
+
     // TODO: FIND IF THESE DEFAULTS ARE SENSIBLE OR NOT AND PERFORM PROPER VALIDATION WHEN CAMERA PREVIEW AND CAMERA
     // PARALLAX ARE PRESENT
 
@@ -53,7 +61,7 @@ SceneUniquePtr WallpaperParser::parseScene (const JSON& file, Project& project) 
                 },
                 .parallax = {
                     .enabled = general.user ("cameraparallax", properties, false),
-                    .amount = general.user ("cameraparallaxamount", properties, 1.0f),
+                    .amount = std::move (parallaxAmount),
                     .delay = general.user ("cameraparallaxdelay", properties, 0.0f),
                     .mouseInfluence = general.user ("cameraparallaxmouseinfluence", properties, 1.0f),
                 },

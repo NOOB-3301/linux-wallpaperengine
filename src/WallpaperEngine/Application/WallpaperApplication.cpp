@@ -29,6 +29,11 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 #include <thread>
+#include <fstream>
+#include <regex>
+#include <set>
+#include <sstream>
+#include "WallpaperEngine/Render/Shaders/Shader.h"
 
 #define FULLSCREEN_CHECK_WAIT_TIME 250
 
@@ -822,11 +827,100 @@ void WallpaperApplication::setupOpenGLDebugging () {
 #endif
 }
 
+void WallpaperApplication::checkShaders (const char* listFile) {
+    std::ifstream in (listFile);
+    const auto& project = *this->m_backgrounds.begin ()->second;
+    int failed = 0, total = 0;
+    std::string name;
+
+    while (std::getline (in, name)) {
+	if (name.empty ()) {
+	    continue;
+	}
+	total++;
+	std::string problem;
+	try {
+	    Data::Model::ComboMap combos;
+	    Data::Model::TextureMap textures;
+	    Data::Model::ShaderConstantMap constants;
+	    Render::Shaders::Shader shader (*project.assetLocator, name, combos, combos, textures, textures, constants);
+	    for (int stage = 0; stage < 2; stage++) {
+		const std::string label = stage == 0 ? "vertex" : "fragment";
+		std::string source = stage == 0 ? shader.vertex () : shader.fragment ();
+		if (!source.empty ()) {
+		    // the engine defines per-pass macros (SPRITESHEET, BLENDMODE, ...) at runtime; default the unknown ones
+		    // to 0 so only real incompatibilities are reported
+		    std::set<std::string> macros;
+		    std::istringstream lines (source);
+		    std::string line;
+		    const std::regex condition (R"(^\s*#\s*(?:el)?if\b(.*)$)");
+		    const std::regex token (R"(\b([A-Z][A-Z0-9_]+)\b)");
+		    std::smatch match;
+		    while (std::getline (lines, line)) {
+			if (!line.empty () && line.back () == '\r') line.pop_back ();   // shader files use CRLF
+			if (std::regex_match (line, match, condition)) {
+			    const std::string expression = match[1].str ();
+			    for (auto it = std::sregex_iterator (expression.begin (), expression.end (), token);
+				 it != std::sregex_iterator (); ++it) {
+				macros.insert ((*it)[1].str ());
+			    }
+			}
+		    }
+		    std::string defines;
+		    for (const auto& macro : macros) {
+			if (macro == "GLSL" || source.find ("#define " + macro) != std::string::npos) continue;
+			defines += "#define " + macro + " 0\n";
+		    }
+		    const size_t afterVersion = source.find ('\n');
+		    if (!defines.empty () && afterVersion != std::string::npos) {
+			source.insert (afterVersion + 1, defines);
+		    }
+		}
+		if (source.empty ()) {
+		    problem += "[" + label + ": rejected before GL (glslang/SPIRV-Cross)] ";
+		    continue;
+		}
+		const GLuint id = glCreateShader (stage == 0 ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
+		const char* text = source.c_str ();
+		glShaderSource (id, 1, &text, nullptr);
+		glCompileShader (id);
+		GLint ok = 0;
+		glGetShaderiv (id, GL_COMPILE_STATUS, &ok);
+		if (!ok) {
+		    char log[1024] = {};
+		    glGetShaderInfoLog (id, sizeof (log) - 1, nullptr, log);
+		    std::string firstLine (log);
+		    firstLine = firstLine.substr (0, firstLine.find ('\n'));
+		    problem += "[" + label + " GL: " + firstLine + "] ";
+		    if (const char* dumpDir = getenv ("WPENGINE_CHECK_DUMP")) {
+			std::string safe = name;
+			std::replace (safe.begin (), safe.end (), '/', '_');
+			std::ofstream (std::string (dumpDir) + "/" + safe + "." + label + ".glsl") << source;
+		    }
+		}
+		glDeleteShader (id);
+	    }
+	} catch (const std::exception& error) {
+	    problem = std::string ("exception: ") + error.what ();
+	}
+	if (!problem.empty ()) {
+	    failed++;
+	    fprintf (stderr, "SHADERCHECK FAIL %s %s\n", name.c_str (), problem.c_str ());
+	}
+    }
+    fprintf (stderr, "SHADERCHECK %d/%d failed\n", failed, total);
+}
+
 void WallpaperApplication::setup () {
     this->setupOutput ();
     this->setupAudio ();
     this->prepareOutputs ();
     this->setupOpenGLDebugging ();
+
+    if (const char* list = getenv ("WPENGINE_CHECK_SHADERS")) {
+	this->checkShaders (list);
+	exit (0);
+    }
 
     if (this->m_context.settings.general.dumpStructure) {
 	auto prettyPrinter = Data::Dumpers::StringPrinter ();

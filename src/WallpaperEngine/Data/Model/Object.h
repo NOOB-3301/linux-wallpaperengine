@@ -123,6 +123,8 @@ struct ImageData {
     std::vector<ImageEffectUniquePtr> effects;
     /** The animation layers used in the puppet warp */
     std::vector<ImageAnimationLayerUniquePtr> animationLayers;
+    /** Name of the parent puppet's attachment point this image follows (empty = none) */
+    std::string attachment;
 };
 
 class Image : public Object, public ImageData {

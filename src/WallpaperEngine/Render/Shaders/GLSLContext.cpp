@@ -178,6 +178,7 @@ std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vert
     spirv_cross::CompilerGLSL::Options options;
     options.version = 330;
     options.es = false;
+    options.enable_420pack_extension = false; // macOS GL tops out at 4.1
     vertexCompiler.set_common_options (options);
 
     spirv.clear ();
@@ -186,6 +187,7 @@ std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vert
     spirv_cross::CompilerGLSL fragmentCompiler (spirv);
     options.version = 330;
     options.es = false;
+    options.enable_420pack_extension = false;
     fragmentCompiler.set_common_options (options);
 
     return { vertexCompiler.compile () + "#if 0\n" + vertex + "\n#endif",

@@ -315,6 +315,11 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	    = glm::mix (this->m_parallaxDisplacement, (centeredMouse * amount) * influence, delay);
     }
 
+    // keyframed property animations (alpha, color, origin, ...) follow the scene clock
+    for (auto* animated : Data::Model::DynamicValue::animatedValues ()) {
+	animated->animate (g_Time);
+    }
+
     // run a tick in the javascript logic
     this->getScriptEngine ().tick ();
 

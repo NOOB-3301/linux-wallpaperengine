@@ -1,4 +1,6 @@
 #include "DynamicValue.h"
+#include <algorithm>
+#include <cmath>
 #include "UserSetting.h"
 
 #include "WallpaperEngine/Data/Utils/ScopeGuard.h"
@@ -299,5 +301,81 @@ void DynamicValue::setProperties (std::map<std::string, UserSettingUniquePtr> pr
 void DynamicValue::propagate (UpdateSource source) const {
     for (const auto& callback : this->m_listeners) {
 	callback (*this, source);
+    }
+}
+
+
+std::vector<DynamicValue*>& DynamicValue::animatedValues () {
+    static std::vector<DynamicValue*> values;
+    return values;
+}
+
+void DynamicValue::setAnimation (PropertyAnimation animation) {
+    if (animation.channels.empty ()) {
+	return;
+    }
+    this->m_animation = std::move (animation);
+    animatedValues ().push_back (this);
+}
+
+void DynamicValue::animate (const float seconds) {
+    if (!this->m_animation.has_value ()) {
+	return;
+    }
+    const auto& animation = *this->m_animation;
+    float frame = seconds * animation.fps;
+    const float length = animation.length > 0 ? animation.length : animation.channels[0].back ().frame;
+
+    if (length > 0) {
+	if (animation.mode == "single") {
+	    frame = std::min (frame, length);
+	} else if (animation.mode == "mirror") {
+	    frame = std::fmod (frame, length * 2);
+	    if (frame > length) {
+		frame = length * 2 - frame;
+	    }
+	} else {
+	    frame = std::fmod (frame, length);
+	}
+    }
+
+    float out[4] = { 0, 0, 0, 0 };
+    const size_t count = std::min<size_t> (animation.channels.size (), 4);
+    for (size_t channel = 0; channel < count; channel++) {
+	const auto& keys = animation.channels[channel];
+	if (keys.empty ()) {
+	    continue;
+	}
+	if (frame <= keys.front ().frame) {
+	    out[channel] = keys.front ().value;
+	} else if (frame >= keys.back ().frame) {
+	    out[channel] = keys.back ().value;
+	} else {
+	    for (size_t i = 1; i < keys.size (); i++) {
+		if (frame <= keys[i].frame) {
+		    const auto& a = keys[i - 1];
+		    const auto& b = keys[i];
+		    const float span = b.frame - a.frame;
+		    const float t = span > 0 ? (frame - a.frame) / span : 1.0f;
+		    out[channel] = a.value + (b.value - a.value) * t;
+		    break;
+		}
+	    }
+	}
+    }
+
+    switch (count) {
+	case 1:
+	    this->update (out[0], UpdateSource::Script);
+	    break;
+	case 2:
+	    this->update (glm::vec2 (out[0], out[1]), UpdateSource::Script);
+	    break;
+	case 3:
+	    this->update (glm::vec3 (out[0], out[1], out[2]), UpdateSource::Script);
+	    break;
+	default:
+	    this->update (glm::vec4 (out[0], out[1], out[2], out[3]), UpdateSource::Script);
+	    break;
     }
 }

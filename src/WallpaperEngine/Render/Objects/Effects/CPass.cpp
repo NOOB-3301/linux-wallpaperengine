@@ -857,11 +857,11 @@ void CPass::setupUniforms () {
     this->addUniform ("g_LightAmbientColor", sceneData.colors.ambient->value->getVec3 ());
     this->addUniform ("g_LightSkylightColor", sceneData.colors.skylight->value->getVec3 ());
     // register variables like brightness and alpha with some default value
-    this->addUniform ("g_Brightness", renderable.getBrightness ());
-    this->addUniform ("g_UserAlpha", renderable.getUserAlpha ());
-    this->addUniform ("g_Alpha", renderable.getAlpha ());
-    this->addUniform ("g_Color", renderable.getColor ());
-    this->addUniform ("g_Color4", renderable.getColor4 ());
+    this->addUniform ("g_Brightness", &renderable.getBrightness ()); // by reference so keyframe animations show up
+    this->addUniform ("g_UserAlpha", &renderable.getUserAlpha ()); // by reference so keyframe animations show up
+    this->addUniform ("g_Alpha", &renderable.getAlpha ()); // by reference so keyframe animations show up
+    this->addUniform ("g_Color", &renderable.getColor ()); // by reference so keyframe animations show up
+    this->addUniform ("g_Color4", &renderable.getColor4 ()); // by reference so keyframe animations show up
     if (!this->m_uniforms.contains ("g_CompositeColor")) {
 	this->addUniform ("g_CompositeColor", renderable.getCompositeColor ());
     }

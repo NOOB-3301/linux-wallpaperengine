@@ -23,6 +23,8 @@
 #include "WallpaperEngine/Data/Utils/MemoryStream.h"
 #include "WallpaperEngine/Logging/Log.h"
 
+extern float g_Time;
+
 using namespace WallpaperEngine;
 using namespace WallpaperEngine::Render::Objects;
 using namespace WallpaperEngine::Render::Objects::Effects;
@@ -134,6 +136,7 @@ CImage::ResolvedTransform CImage::resolveTransform (const Object& object) const 
     // Walk up the parent chain leaf-first, bounded by kMaxParentDepth to guard
     // against cycles. chain[0] is the requested object; the last entry is the root.
     const Object* chain[kMaxParentDepth + 1];
+    const CObject* renderChain[kMaxParentDepth + 1] = {};
     int count = 0;
     const Object* current = &object;
     chain[count++] = current;
@@ -148,6 +151,7 @@ CImage::ResolvedTransform CImage::resolveTransform (const Object& object) const 
 	    break;
 	}
 	current = &parentObject->getObject ();
+	renderChain[count] = parentObject;
 	chain[count++] = current;
     }
 
@@ -156,6 +160,16 @@ CImage::ResolvedTransform CImage::resolveTransform (const Object& object) const 
     ResolvedTransform resolved = localTransform (*chain[count - 1]);
     for (int i = count - 2; i >= 0; --i) {
 	ResolvedTransform local = localTransform (*chain[i]);
+	// macOS port: an image attached to a puppet's attachment point rides on that bone
+	if (chain[i]->is<Image> () && !chain[i]->as<Image> ()->attachment.empty ()) {
+	    if (const auto* parentImage = dynamic_cast<const CImage*> (renderChain[i + 1])) {
+		if (const auto attached = parentImage->puppetAttachment (chain[i]->as<Image> ()->attachment)) {
+		    local.origin.x += (*attached)[3][0];
+		    local.origin.y += (*attached)[3][1];
+		    local.angle += std::atan2 ((*attached)[0][1], (*attached)[0][0]);
+		}
+	    }
+	}
 	const glm::vec2 offset
 	    = rotateVec2 ({ local.origin.x * resolved.scale.x, local.origin.y * resolved.scale.y }, resolved.angle);
 	local.origin.x = resolved.origin.x + offset.x;
@@ -430,6 +444,37 @@ bool CImage::loadPuppetMesh (const glm::vec2& size) {
     try {
 	const auto stream = this->getScene ().getScene ().project.assetLocator->read (*this->getImage ().model->puppet);
 	std::vector<char> data { std::istreambuf_iterator<char> (*stream), std::istreambuf_iterator<char> () };
+
+	// macOS port: full parser (skeleton, animations, attachments); the mesh-only scan below is the fallback
+	if (auto puppet = Puppet::parse (data)) {
+	    std::vector<GLfloat> texcoords;
+	    this->m_puppetRawPositions.clear ();
+	    for (const auto& vertex : puppet->vertices) {
+		this->m_puppetRawPositions.insert (
+		    this->m_puppetRawPositions.end (), { vertex.position.x, vertex.position.y, vertex.position.z }
+		);
+		texcoords.insert (texcoords.end (), { vertex.texcoord.x, vertex.texcoord.y });
+	    }
+	    this->m_puppetSize = size;
+	    this->updatePuppetPositionBuffer (size);
+
+	    glGenBuffers (1, &this->m_puppetTexCoord);
+	    glBindBuffer (GL_ARRAY_BUFFER, this->m_puppetTexCoord);
+	    glBufferData (GL_ARRAY_BUFFER, texcoords.size () * sizeof (GLfloat), texcoords.data (), GL_STATIC_DRAW);
+
+	    glGenBuffers (1, &this->m_puppetIndices);
+	    glBindBuffer (GL_ELEMENT_ARRAY_BUFFER, this->m_puppetIndices);
+	    glBufferData (
+		GL_ELEMENT_ARRAY_BUFFER, puppet->indices.size () * sizeof (uint16_t), puppet->indices.data (), GL_STATIC_DRAW
+	    );
+	    this->m_puppetIndexCount = static_cast<GLsizei> (puppet->indices.size ());
+	    sLog.out (
+		"Loaded puppet ", *this->getImage ().model->puppet, " bones=", puppet->bones.size (),
+		" animations=", puppet->animations.size (), " attachments=", puppet->attachments.size ()
+	    );
+	    this->m_puppet = std::move (puppet);
+	    return true;
+	}
 
 	constexpr size_t markerSize = 9;
 	constexpr size_t meshHeaderSize = sizeof (uint32_t) * 2;
@@ -918,6 +963,8 @@ void CImage::render () {
 
     glColorMask (true, true, true, true);
 
+    this->animatePuppet ();
+
     // Always update screen transform (handles rotation + parallax dynamically)
     this->updateScreenSpacePosition ();
 
@@ -1146,3 +1193,38 @@ GLuint CImage::getPassSpacePosition () const { return this->m_passSpacePosition;
 GLuint CImage::getTexCoordCopy () const { return this->m_texcoordCopy; }
 
 GLuint CImage::getTexCoordPass () const { return this->m_texcoordPass; }
+
+
+void CImage::animatePuppet () {
+    if (this->m_puppet == nullptr || this->m_puppetLastTime == g_Time) {
+	return;
+    }
+    const float delta = this->m_puppetLastTime < 0.0f ? 0.0f : std::max (0.0f, g_Time - this->m_puppetLastTime);
+    this->m_puppetLastTime = g_Time;
+
+    std::vector<Puppet::Layer> layers;
+    for (const auto& layer : this->getImage ().animationLayers) {
+	layers.push_back ({
+	    .id = layer->id,
+	    .rate = layer->rate->value->getFloat (),
+	    .blend = layer->blend->value->getFloat (),
+	    .visible = layer->visible->value->getBool (),
+	});
+    }
+    this->m_puppet->setLayers (layers);
+    this->m_puppet->update (delta);
+
+    const auto skinned = this->m_puppet->skinnedPositions ();
+    for (size_t i = 0; i < skinned.size (); i++) {
+	this->m_puppetRawPositions[i * 3 + 0] = skinned[i].x;
+	this->m_puppetRawPositions[i * 3 + 1] = skinned[i].y;
+	this->m_puppetRawPositions[i * 3 + 2] = skinned[i].z;
+    }
+    this->updatePuppetPositionBuffer (this->m_puppetSize);
+}
+
+std::optional<glm::mat4> CImage::puppetAttachment (const std::string& name) const {
+    // parents render first, but make sure the bones are current when a child asks
+    const_cast<CImage*> (this)->animatePuppet ();
+    return this->m_puppet != nullptr ? this->m_puppet->attachment (name) : std::nullopt;
+}

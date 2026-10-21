@@ -63,6 +63,34 @@ DynamicValueUniquePtr DynamicValueParser::parse (const json& data, const Propert
 	value->update (DynamicValue::UpdateSource::Initialization);
     }
 
+    if (data.is_object () && data.contains ("animation") && data["animation"].is_object ()) {
+	const auto& animationJson = data["animation"];
+	PropertyAnimation animation;
+	if (animationJson.contains ("options") && animationJson["options"].is_object ()) {
+	    const auto& options = animationJson["options"];
+	    if (options.contains ("fps") && options["fps"].is_number ()) animation.fps = options["fps"].get<float> ();
+	    if (options.contains ("length") && options["length"].is_number ()) {
+		animation.length = options["length"].get<float> ();
+	    }
+	    if (options.contains ("mode") && options["mode"].is_string ()) {
+		animation.mode = options["mode"].get<std::string> ();
+	    }
+	}
+	for (int channel = 0; channel < 4; channel++) {
+	    const std::string name = "c" + std::to_string (channel);
+	    if (!animationJson.contains (name) || !animationJson[name].is_array ()) break;
+	    std::vector<PropertyAnimation::Key> keys;
+	    for (const auto& key : animationJson[name]) {
+		if (key.is_object () && key.contains ("frame") && key.contains ("value")
+		    && key["frame"].is_number () && key["value"].is_number ()) {
+		    keys.push_back ({ key["frame"].get<float> (), key["value"].get<float> () });
+		}
+	    }
+	    animation.channels.push_back (std::move (keys));
+	}
+	value->setAnimation (std::move (animation));
+    }
+
     if (scriptSource.has_value ()) {
 	std::map<std::string, UserSettingUniquePtr> scriptProps;
 

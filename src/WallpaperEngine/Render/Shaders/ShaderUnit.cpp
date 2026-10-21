@@ -414,6 +414,47 @@ std::string ShaderUnit::applyLinkedVaryingCompatibility (std::string source) con
     return source;
 }
 
+std::string ShaderUnit::applyWritableVaryingCompatibility (std::string source) const {
+    if (this->m_type != GLSLContext::UnitType_Fragment) {
+	return source;
+    }
+
+    struct Varying {
+	std::string type;
+	std::string name;
+    };
+    std::vector<Varying> writable;
+    const std::regex declaration (R"(\bvarying\s+(\w+)\s+([A-Za-z_]\w*)\s*;)");
+    for (auto it = std::sregex_iterator (source.begin (), source.end (), declaration); it != std::sregex_iterator ();
+	 ++it) {
+	const std::string name = (*it)[2].str ();
+	const std::regex write ("\\b" + name + "\\b(\\s*\\.\\s*\\w+)?\\s*([-+*/]?=)(?!=)");
+	if (std::regex_search (source, write)) {
+	    writable.push_back ({ (*it)[1].str (), name });
+	}
+    }
+
+    for (const auto& varying : writable) {
+	const std::string local = varying.name + "_w";
+	const std::regex exactDeclaration ("\\bvarying\\s+" + varying.type + "\\s+" + varying.name + "\\s*;");
+	source = std::regex_replace (source, exactDeclaration, "@@VARYING_DECL@@");
+	source = std::regex_replace (source, std::regex ("\\b" + varying.name + "\\b"), local);
+	const std::string keep = "varying " + varying.type + " " + varying.name + ";\n" + varying.type + " " + local + ";";
+	const size_t marker = source.find ("@@VARYING_DECL@@");
+	if (marker != std::string::npos) {
+	    source.replace (marker, std::string ("@@VARYING_DECL@@").size (), keep);
+	}
+	const std::regex mainStart (R"(void\s+main\s*\(\s*(void)?\s*\)\s*\{)");
+	std::smatch match;
+	if (std::regex_search (source, match, mainStart)) {
+	    source.insert (match.position () + match.length (), "\n" + local + " = " + varying.name + ";\n");
+	}
+	sLog.out ("Made varying ", varying.name, " writable in ", this->m_file);
+    }
+
+    return source;
+}
+
 std::string ShaderUnit::applyFragmentTexCoordCompatibility (std::string source) const {
     if (this->m_type != GLSLContext::UnitType_Fragment) {
 	return source;
@@ -715,7 +756,9 @@ const std::string& ShaderUnit::compile () {
 
     // this should be the rest of the shader
     this->m_final
-	+= this->applyFragmentTexCoordCompatibility (this->applyLinkedVaryingCompatibility (this->m_preprocessed));
+	+= this->applyWritableVaryingCompatibility (
+	    this->applyFragmentTexCoordCompatibility (this->applyLinkedVaryingCompatibility (this->m_preprocessed))
+	);
 
     // the pass itself handles shader compilation, the unit doesn't have enough information for this step
     return this->m_final;

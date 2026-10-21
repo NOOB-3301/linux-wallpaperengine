@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace WallpaperEngine::Data::Model {
 class DynamicValue;
@@ -24,6 +25,21 @@ struct ScriptContext {
 	int id;
 	std::string name;
     } object;
+};
+
+/**
+ * Keyframed property animation ("alpha": { "animation": { "c0": [...], "options": {...} } }): one keyframe list per
+ * component, evaluated against the scene clock. Handles (bezier tangents) are ignored, frames interpolate linearly.
+ */
+struct PropertyAnimation {
+    struct Key {
+	float frame;
+	float value;
+    };
+    std::vector<std::vector<Key>> channels;
+    float fps = 30.0f;
+    float length = 0.0f;
+    std::string mode = "loop"; // loop, mirror or single
 };
 
 /**
@@ -138,6 +154,17 @@ public:
     void setProperties (std::map<std::string, UserSettingUniquePtr> properties);
 
 private:
+public:
+    /** Attaches a keyframe animation and registers the value so the scene ticks it every frame */
+    void setAnimation (PropertyAnimation animation);
+    /** Evaluates the animation at the given scene time (seconds) and propagates the result */
+    void animate (float seconds);
+    /** Every value that carries an animation (scene lifetime, ticked by CScene) */
+    static std::vector<DynamicValue*>& animatedValues ();
+
+private:
+    std::optional<PropertyAnimation> m_animation = std::nullopt;
+
     /**
      * Notifies any listeners that the value has changed
      */

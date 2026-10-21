@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Puppet.h"
+#include <optional>
+
 #include "CRenderable.h"
 #include "WallpaperEngine/Render/CObject.h"
 #include "WallpaperEngine/Render/Objects/Effects/CPass.h"
@@ -77,6 +80,12 @@ protected:
 
 private:
     bool loadPuppetMesh (const glm::vec2& size);
+    /** Advances the puppet's bone animation to the current scene time and re-skins the mesh */
+    void animatePuppet ();
+public:
+    /** Animated transform of the named attachment point of this image's puppet (model space), if any */
+    [[nodiscard]] std::optional<glm::mat4> puppetAttachment (const std::string& name) const;
+private:
     void updatePuppetPositionBuffer (const glm::vec2& size);
     void setupPuppetGeometryCallback (Effects::CPass* pass) const;
     ResolvedTransform updateGeometryBuffers ();
@@ -103,6 +112,9 @@ private:
     GLsizei m_puppetIndexCount = 0;
     bool m_hasPuppetMesh = false;
     std::vector<GLfloat> m_puppetRawPositions = {};
+    std::unique_ptr<Puppet> m_puppet = nullptr;
+    glm::vec2 m_puppetSize = {};
+    float m_puppetLastTime = -1.0f;
 
     glm::mat4 m_modelViewProjectionScreen = {};
     glm::mat4 m_modelViewProjectionPass = {};

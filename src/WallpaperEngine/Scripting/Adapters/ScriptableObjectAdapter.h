@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include "ObjectAdapter.h"
 
 namespace WallpaperEngine::Scripting::Adapters {

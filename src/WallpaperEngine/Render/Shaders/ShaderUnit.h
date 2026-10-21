@@ -104,6 +104,8 @@ private:
      * Adjusts fragment shaders that use wide texture coordinates as vec2 values in Wallpaper Engine effects.
      */
     [[nodiscard]] std::string applyFragmentTexCoordCompatibility (std::string source) const;
+    /** Wallpaper Engine lets fragment shaders modify their varyings; GLSL does not (glslang: "can't modify shader input") */
+    [[nodiscard]] std::string applyWritableVaryingCompatibility (std::string source) const;
 
     /**
      * Parses a COMBO value to add the proper define to the code
